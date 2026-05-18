@@ -1,0 +1,16 @@
+[project]
+name = "ocr-microservice"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.43.6",
+    "fastapi>=0.136.1",
+    "ollama>=0.6.2",
+    "pillow>=12.2.0",
+    "pydantic-settings>=2.14.1",
+    "python-multipart>=0.0.28",
+    "requests>=2.34.0",
+    "uvicorn>=0.46.0",
+]
