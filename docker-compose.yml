@@ -51,6 +51,15 @@ services:
       - OLLAMA_HOST=http://ollama:11434
     command: pull glm-ocr:q8_0
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+
 volumes:
   minio_data:
   ollama_models:
+  redis_data:

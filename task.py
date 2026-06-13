@@ -1,0 +1,97 @@
+import logging
+import requests
+import io
+import base64
+import boto3
+from PIL import Image
+from celery import Celery
+from ollama import Client as OllamaClient
+
+from config import settings
+from prompts import INVOICE_EXTRACTION_PROMPT
+from schemas import (
+    InvoiceData, WebhookSuccessPayload, WebhookErrorPayload, WebhookHeaders
+)
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+s3_client = boto3.client(
+    "s3",
+    endpoint_url=settings.MINIO_INTERNAL_ENDPOINT,
+    aws_access_key_id=settings.MINIO_ROOT_USER,
+    aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
+)
+ollama_client = OllamaClient(host=settings.OLLAMA_HOST)
+
+celery_app = Celery('ocr_worker', broker=settings.CELERY_BROKER_URL)
+celery_app.conf.update(
+    worker_concurrency=1,
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+    task_time_limit=300
+)
+
+def _send_webhook(url: str, payload_dict: dict, headers_dict: dict, task_id: str):
+    """Pomocnicza funkcja sieciowa z własnym try...except"""
+    try:
+        resp = requests.post(url, json=payload_dict, headers=headers_dict, timeout=10)
+        resp.raise_for_status()
+        logger.info(f"[{task_id}] Zakończono sukcesem. Wysłano Webhook.")
+    except Exception as exc:
+        logger.error(f"[{task_id}] Sieć: Błąd wysyłania webhooka: {exc}")
+        raise
+
+@celery_app.task(name="process_invoice", bind=True, max_retries=3)
+def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str):
+    
+    try:
+        file_obj = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=file_path)
+        file_bytes = file_obj['Body'].read()
+    except Exception as exc:
+        logger.error(f"[{task_id}] Sieć: Błąd pobierania z MinIO: {exc}")
+        raise self.retry(exc=exc, countdown=60)
+    
+    img = Image.open(io.BytesIO(file_bytes))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    max_size = 1600
+    if img.width > max_size or img.height > max_size:
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    temp_buffer = io.BytesIO()
+    img.save(temp_buffer, format="JPEG")
+    base64_image = base64.b64encode(temp_buffer.getvalue()).decode('utf-8')
+    
+    try:
+        response = ollama_client.chat(
+            model="glm-ocr:q8_0",
+            options={"num_ctx": 4096},
+            messages=[{
+                "role": "user",
+                "content": INVOICE_EXTRACTION_PROMPT,
+                "images": [base64_image]
+            }],
+        )
+        extracted_data_str = response["message"]["content"]
+    except Exception as exc:
+        logger.error(f"[{task_id}] Sieć: Błąd modelu Ollama: {exc}")
+        raise self.retry(exc=exc, countdown=60)
+    
+    cleaned_str = (
+        extracted_data_str.strip()
+        .removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    )
+
+    parsed_data = InvoiceData.model_validate_json(cleaned_str)
+
+    headers_model = WebhookHeaders(authorization=f"Bearer {settings.WEBHOOK_SECRET_TOKEN}")
+    payload_model = WebhookSuccessPayload(task_id=task_id, data=parsed_data)
+
+    _send_webhook(
+        webhook_url, 
+        payload_model.model_dump(), 
+        headers_model.model_dump(by_alias=True), 
+        task_id
+    )
+
+    return True

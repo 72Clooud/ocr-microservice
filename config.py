@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "OCR Worker API"
+    PROJECT_NAME: str = "OCR Worker"
 
     MINIO_ROOT_USER: str
     MINIO_ROOT_PASSWORD: str
@@ -10,6 +10,16 @@ class Settings(BaseSettings):
     BUCKET_NAME: str
     
     OLLAMA_HOST: str
+    
+    REDIS_PASSWORD: str
+    REDIS_HOST: str = "redis"
+    REDIS_PORT: str = "6379"
+    
+    WEBHOOK_SECRET_TOKEN: str
+
+    @property
+    def CELERY_BROKER_URL(self) -> str:
+        return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
     class Config:
         env_file = ".env"
