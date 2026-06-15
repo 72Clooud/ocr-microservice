@@ -6,6 +6,17 @@ services:
     env_file:
       - .env
     depends_on:
+      redis:
+        condition: service_started
+
+  worker:
+    build: .
+    command: ["uv", "run", "celery", "-A", "tasks.celery_app", "worker", "--loglevel=info"]
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_started
       minio:
         condition: service_started
       ollama-init:
