@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title=settings.PROJECT_NAME)
 
 @app.post('/api/v1/process_invoice', response_model=InvoiceTaskResponse, status_code=202)
-async def process_invoice(request: InvoiceTaskRequest):
+async def process_invoice(request: InvoiceTaskRequest) -> InvoiceTaskResponse:
     process_invoice_task.delay(
         task_id=request.task_id,
         file_path=request.file_path,
