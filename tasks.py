@@ -32,10 +32,10 @@ celery_app.conf.update(
     task_time_limit=300
 )
 
-def _clean_extracted_data(extracted_data_str: str):
+def _clean_extracted_data(extracted_data_str: str) -> str:
     return extracted_data_str.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
-def _send_webhook(url: str, payload_dict: dict, task_id: str):
+def _send_webhook(url: str, payload_dict: dict, task_id: str) -> None:
     try:
         resp = requests.post(url, json=payload_dict, timeout=10)
         resp.raise_for_status()
@@ -45,7 +45,7 @@ def _send_webhook(url: str, payload_dict: dict, task_id: str):
         raise
 
 @celery_app.task(name="process_invoice", bind=True, max_retries=3)
-def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str):
+def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -> bool:
     try:
         file_obj = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=file_path)
         file_bytes = file_obj['Body'].read()
