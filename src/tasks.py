@@ -10,7 +10,7 @@ from ollama import Client as OllamaClient
 from config import settings
 from prompts import INVOICE_EXTRACTION_PROMPT
 from schemas import (
-    InvoiceData, WebhookSuccessPayload, WebhookHeaders
+    InvoiceData, WebhookSuccessPayload
 )
 
 logger = logging.getLogger(__name__)
