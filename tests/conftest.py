@@ -2,7 +2,7 @@ import os
 import sys
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 os.environ.setdefault("MINIO_ROOT_USER", "test-user")
 os.environ.setdefault("MINIO_ROOT_PASSWORD", "test-password")
