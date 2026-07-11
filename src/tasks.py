@@ -2,7 +2,7 @@ import logging
 import requests
 import io
 import base64
-import boto3
+from azure.storage.blob import BlobServiceClient
 from PIL import Image
 from celery import Celery
 from ollama import Client as OllamaClient
@@ -16,11 +16,11 @@ from schemas import (
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-s3_client = boto3.client(
-    "s3",
-    endpoint_url=settings.MINIO_INTERNAL_ENDPOINT,
-    aws_access_key_id=settings.MINIO_ROOT_USER,
-    aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
+blob_service = BlobServiceClient.from_connection_string(
+    settings.AZURE_STORAGE_CONNECTION_STRING
+)
+container_client = blob_service.get_container_client(
+    settings.AZURE_STORAGE_CONTAINER_NAME
 )
 ollama_client = OllamaClient(host=settings.OLLAMA_HOST)
 
@@ -47,10 +47,10 @@ def _send_webhook(url: str, payload_dict: dict, task_id: str) -> None:
 @celery_app.task(name="process_invoice", bind=True, max_retries=3)
 def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -> bool:
     try:
-        file_obj = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=file_path)
-        file_bytes = file_obj['Body'].read()
+        blob_client = container_client.get_blob_client(file_path)
+        file_bytes = blob_client.download_blob().readall()
     except Exception as exc:
-        logger.error(f"[{task_id}] MinIO download error: {exc}")
+        logger.error(f"[{task_id}] Azure Blob download error: {exc}")
         raise self.retry(exc=exc, countdown=60)
     
     img = Image.open(io.BytesIO(file_bytes))
