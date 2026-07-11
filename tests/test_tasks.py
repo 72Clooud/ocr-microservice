@@ -56,15 +56,17 @@ def _generate_test_image(width: int, height: int) -> bytes:
     return buf.getvalue()
 
 
-@patch("tasks.s3_client.get_object")
+@patch("tasks.container_client.get_blob_client")
 @patch("tasks.ollama_client.chat")
 @patch("tasks.requests.post")
-def test_process_invoice_task_success(mock_post, mock_ollama_chat, mock_s3_get_object):
-    # Setup: S3 returns a large image to test resizing logic
+def test_process_invoice_task_success(mock_post, mock_ollama_chat, mock_get_blob_client):
+    # Setup: Blob Storage returns a large image to test resizing logic
     large_image_bytes = _generate_test_image(2000, 1000)
-    mock_body = MagicMock()
-    mock_body.read.return_value = large_image_bytes
-    mock_s3_get_object.return_value = {"Body": mock_body}
+    mock_download = MagicMock()
+    mock_download.readall.return_value = large_image_bytes
+    mock_blob_client = MagicMock()
+    mock_blob_client.download_blob.return_value = mock_download
+    mock_get_blob_client.return_value = mock_blob_client
 
     # Setup: Ollama returns a simulated model response containing JSON
     mock_ollama_chat.return_value = {
@@ -90,8 +92,8 @@ def test_process_invoice_task_success(mock_post, mock_ollama_chat, mock_s3_get_o
 
     assert result is True
 
-    # Verify S3 call
-    mock_s3_get_object.assert_called_once_with(Bucket="test-bucket", Key="path/to/invoice.jpg")
+    # Verify Blob Storage call
+    mock_get_blob_client.assert_called_once_with("path/to/invoice.jpg")
 
     # Verify Ollama chat parameters
     mock_ollama_chat.assert_called_once()
@@ -114,12 +116,12 @@ def test_process_invoice_task_success(mock_post, mock_ollama_chat, mock_s3_get_o
     assert sent_payload["data"]["seller"]["name"] == "ACME Corp"
 
 
-@patch("tasks.s3_client.get_object")
+@patch("tasks.container_client.get_blob_client")
 @patch("tasks.process_invoice_task.retry")
-def test_process_invoice_task_s3_failure(mock_retry, mock_s3_get_object):
-    # Setup: S3 throws an exception
-    exc = Exception("MinIO offline")
-    mock_s3_get_object.side_effect = exc
+def test_process_invoice_task_blob_failure(mock_retry, mock_get_blob_client):
+    # Setup: Blob Storage throws an exception
+    exc = Exception("Azure Blob Storage offline")
+    mock_get_blob_client.side_effect = exc
     mock_retry.side_effect = Retry()
 
     with pytest.raises(Retry):
@@ -128,15 +130,17 @@ def test_process_invoice_task_s3_failure(mock_retry, mock_s3_get_object):
     mock_retry.assert_called_once_with(exc=exc, countdown=60)
 
 
-@patch("tasks.s3_client.get_object")
+@patch("tasks.container_client.get_blob_client")
 @patch("tasks.ollama_client.chat")
 @patch("tasks.process_invoice_task.retry")
-def test_process_invoice_task_ollama_failure(mock_retry, mock_ollama_chat, mock_s3_get_object):
-    # Setup: S3 returns a valid image
+def test_process_invoice_task_ollama_failure(mock_retry, mock_ollama_chat, mock_get_blob_client):
+    # Setup: Blob Storage returns a valid image
     image_bytes = _generate_test_image(100, 100)
-    mock_body = MagicMock()
-    mock_body.read.return_value = image_bytes
-    mock_s3_get_object.return_value = {"Body": mock_body}
+    mock_download = MagicMock()
+    mock_download.readall.return_value = image_bytes
+    mock_blob_client = MagicMock()
+    mock_blob_client.download_blob.return_value = mock_download
+    mock_get_blob_client.return_value = mock_blob_client
 
     # Setup: Ollama client throws an exception
     exc = Exception("Ollama client connection refused")

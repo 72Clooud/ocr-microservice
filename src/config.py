@@ -5,22 +5,23 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "OCR Worker"
 
-    MINIO_ROOT_USER: str
-    MINIO_ROOT_PASSWORD: str
-    MINIO_INTERNAL_ENDPOINT: str
-    MINIO_EXTERNAL_URL: str
-    BUCKET_NAME: str
-    
+    # Azure Blob Storage
+    AZURE_STORAGE_CONNECTION_STRING: str
+    AZURE_STORAGE_CONTAINER_NAME: str = "invoices"
+
     OLLAMA_HOST: str
     
     REDIS_PASSWORD: str
     REDIS_HOST: str = "redis"
     REDIS_PORT: str = "6379"
+    REDIS_SSL: bool = False
     
     WEBHOOK_SECRET_TOKEN: str
 
     @property
     def CELERY_BROKER_URL(self) -> str:
-        return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+        scheme = "rediss" if self.REDIS_SSL else "redis"
+        ssl_params = "?ssl_cert_reqs=none" if self.REDIS_SSL else ""
+        return f"{scheme}://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/0{ssl_params}"
 
 settings = Settings()
