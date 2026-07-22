@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import logging
 import requests
 import io
@@ -33,7 +34,11 @@ celery_app.conf.update(
 )
 
 def _clean_extracted_data(extracted_data_str: str) -> str:
-    return extracted_data_str.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    if not extracted_data_str:
+        return "{}"
+    match_code_block = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", extracted_data_str, re.IGNORECASE)
+    if match_code_block:
+        return match_code_block.group(1).strip()
 
 def _send_webhook(url: str, payload_dict: dict, task_id: str) -> None:
     try:
@@ -90,4 +95,3 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
         task_id
         )    
 
-    return True
