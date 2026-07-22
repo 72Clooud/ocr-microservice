@@ -3,6 +3,7 @@ import requests
 import io
 import base64
 import boto3
+import re
 from PIL import Image
 from celery import Celery
 from ollama import Client as OllamaClient
@@ -33,7 +34,17 @@ celery_app.conf.update(
 )
 
 def _clean_extracted_data(extracted_data_str: str) -> str:
-    return extracted_data_str.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    if not extracted_data_str:
+        return "{}"
+    match_code_block = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", extracted_data_str, re.IGNORECASE)
+    if match_code_block:
+        return match_code_block.group(1).strip()
+    
+    match_json = re.search(r"\{[\s\S]*\}", extracted_data_str)
+    if match_json:
+        return match_json.group(0).strip()
+
+    return extracted_data_str.strip()
 
 def _send_webhook(url: str, payload_dict: dict, task_id: str) -> None:
     try:
@@ -66,7 +77,8 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
     try:
         response = ollama_client.chat(
             model="glm-ocr:q8_0",
-            options={"num_ctx": 4096},
+            format="json",
+            options={"num_ctx": 4096, "temperature": 0.0},
             messages=[{
                 "role": "user",
                 "content": INVOICE_EXTRACTION_PROMPT,
@@ -75,12 +87,16 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
         )
         extracted_data_str = response["message"]["content"]
     except Exception as exc:
-        logger.error(f"[{task_id}] Ollam model error: {exc}")
+        logger.error(f"[{task_id}] Ollama model error: {exc}")
         raise self.retry(exc=exc, countdown=60)
     
     cleaned_str = _clean_extracted_data(extracted_data_str)
 
-    parsed_data = InvoiceData.model_validate_json(cleaned_str)
+    try:
+        parsed_data = InvoiceData.model_validate_json(cleaned_str)
+    except Exception as exc:
+        logger.error(f"[{task_id}] Pydantic validation error: {exc}. Raw response: {extracted_data_str!r}")
+        raise self.retry(exc=exc, countdown=60)
     
     payload_model = WebhookSuccessPayload(task_id=task_id, data=parsed_data)
 

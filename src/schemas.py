@@ -12,23 +12,27 @@ class InvoiceTaskResponse(BaseModel):
     status: str
 
 class Company(BaseModel):
+    model_config = {"extra": "ignore"}
     name: Optional[str] = None
     address: Optional[str] = None
     vat_id: Optional[str] = None
 
 class LineItem(BaseModel):
+    model_config = {"extra": "ignore"}
     description: Optional[str] = None
     quantity: Optional[Union[float, str]] = None
     net_value: Optional[Union[float, str]] = None
     var_rate: Optional[Union[float, str]] = None
 
 class Summary(BaseModel):
+    model_config = {"extra": "ignore"}
     total_net: Optional[Union[float, str]] = None
     total_vat: Optional[Union[float, str]] = None
     total_due: Optional[Union[float, str]] = None
     currency: Optional[str] = None
 
 class InvoiceData(BaseModel):
+    model_config = {"extra": "ignore"}
     invoice_number: Optional[str] = None
     seller: Optional[Company] = None
     buyer: Optional[Company] = None

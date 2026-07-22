@@ -25,6 +25,14 @@ def test_clean_extracted_data():
     data3 = "   {\n  \"invoice_number\": \"INV-123\"\n}  "
     assert _clean_extracted_data(data3) == '{\n  "invoice_number": "INV-123"\n}'
 
+    # Test conversational text before code block
+    data4 = "Here is the extracted invoice JSON:\n```json\n{\n  \"invoice_number\": \"INV-123\"\n}\n```\nHope this helps!"
+    assert _clean_extracted_data(data4) == '{\n  "invoice_number": "INV-123"\n}'
+
+    # Test raw json surrounded by conversational text without code blocks
+    data5 = "Sure! {\"invoice_number\": \"INV-123\"} is the output."
+    assert _clean_extracted_data(data5) == '{"invoice_number": "INV-123"}'
+
 
 @patch("tasks.requests.post")
 def test_send_webhook_success(mock_post):
@@ -97,7 +105,8 @@ def test_process_invoice_task_success(mock_post, mock_ollama_chat, mock_s3_get_o
     mock_ollama_chat.assert_called_once()
     called_args, called_kwargs = mock_ollama_chat.call_args
     assert called_kwargs["model"] == "glm-ocr:q8_0"
-    assert called_kwargs["options"] == {"num_ctx": 4096}
+    assert called_kwargs["format"] == "json"
+    assert called_kwargs["options"] == {"num_ctx": 4096, "temperature": 0.0}
     assert len(called_kwargs["messages"]) == 1
     assert called_kwargs["messages"][0]["role"] == "user"
     assert "images" in called_kwargs["messages"][0]
