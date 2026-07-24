@@ -1,6 +1,7 @@
 import logging
 import requests
 import io
+import re
 import base64
 from azure.storage.blob import BlobServiceClient
 from PIL import Image
