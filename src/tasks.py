@@ -4,6 +4,8 @@ import io
 import base64
 import boto3
 import re
+import pypdfium2 as pdfium 
+
 from PIL import Image
 from celery import Celery
 from ollama import Client as OllamaClient
@@ -11,7 +13,7 @@ from ollama import Client as OllamaClient
 from config import settings
 from prompts import INVOICE_EXTRACTION_PROMPT
 from schemas import (
-    InvoiceData, WebhookSuccessPayload
+    InvoiceData, WebhookSuccessPayload, FileTypePrefixes
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,32 @@ def _send_webhook(url: str, payload_dict: dict, task_id: str) -> None:
         logger.error(f"[{task_id}] Error sending webhook: {exc}")
         raise
 
+def _preprocess_image(image_bytes: bytes, max_size: int = 1344) -> bytes:
+    img = Image.open(io.BytesIO(image_bytes))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    if img.width > max_size or img.height > max_size:
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    image_buffer = io.BytesIO()
+    img.save(image_buffer, format="JPEG")
+    img_bytes = image_buffer.getvalue()
+
+    return img_bytes
+
+def _pdf_to_image(pdf_bytes: bytes, dpi: int = 300) -> bytes:
+    scale_factor = dpi / 72.0
+
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    page = pdf.get_page(0)
+    bitmap = page.render(scale=scale_factor)
+    pil_image = bitmap.to_pil()
+    image_buffer = io.BytesIO()
+    pil_image.save(image_buffer, format="PNG")
+    img_bytes = image_buffer.getvalue()
+    processed_image = _preprocess_image(img_bytes)
+
+    return processed_image
+
 @celery_app.task(name="process_invoice", bind=True, max_retries=3)
 def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -> bool:
     try:
@@ -63,29 +91,32 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
     except Exception as exc:
         logger.error(f"[{task_id}] MinIO download error: {exc}")
         raise self.retry(exc=exc, countdown=60)
-    
-    img = Image.open(io.BytesIO(file_bytes))
-    if img.mode != "RGB":
-        img = img.convert("RGB")
-    max_size = 1600
-    if img.width > max_size or img.height > max_size:
-        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-    temp_buffer = io.BytesIO()
-    img.save(temp_buffer, format="JPEG")
-    base64_image = base64.b64encode(temp_buffer.getvalue()).decode('utf-8')
-    
+
+    if file_bytes.startswith(FileTypePrefixes.PDF_PREFIX.value):
+        img = _pdf_to_image(file_bytes)
+    elif file_bytes.startswith(FileTypePrefixes.PNG_PREFIX.value) or file_bytes.startswith(FileTypePrefixes.JPG_PREFIX.value):
+        img = _preprocess_image(file_bytes)
+    else:
+        raise ValueError("Incorrect file format")
+
     try:
         response = ollama_client.chat(
             model="glm-ocr:q8_0",
             format="json",
-            options={"num_ctx": 4096, "temperature": 0.0},
+            options={"num_ctx": 8192, "temperature": 0.0},
             messages=[{
                 "role": "user",
                 "content": INVOICE_EXTRACTION_PROMPT,
-                "images": [base64_image]
+                "images": [img]
             }],
         )
         extracted_data_str = response["message"]["content"]
+        logger.info(
+            f"[{task_id}] Ollama response: prompt_eval_count={response.get('prompt_eval_count')}, "
+            f"eval_count={response.get('eval_count')}, "
+            f"total_duration={response.get('total_duration')}"
+        )
+        logger.info(f"[{task_id}] Raw model output: {extracted_data_str!r}")
     except Exception as exc:
         logger.error(f"[{task_id}] Ollama model error: {exc}")
         raise self.retry(exc=exc, countdown=60)
