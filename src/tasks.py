@@ -8,7 +8,7 @@ import pypdfium2 as pdfium
 
 from PIL import Image
 from celery import Celery
-from ollama import Client as OllamaClient
+from openai import OpenAI
 
 from config import settings
 from prompts import INVOICE_EXTRACTION_PROMPT
@@ -25,7 +25,7 @@ s3_client = boto3.client(
     aws_access_key_id=settings.MINIO_ROOT_USER,
     aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
 )
-ollama_client = OllamaClient(host=settings.OLLAMA_HOST)
+llm_client = OpenAI(base_url=settings.LLM_API_BASE_URL, api_key="sk-no-key-required")
 
 celery_app = Celery('ocr_worker', broker=settings.CELERY_BROKER_URL)
 celery_app.conf.update(
@@ -100,25 +100,28 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
         raise ValueError("Incorrect file format")
 
     try:
-        response = ollama_client.chat(
-            model="glm-ocr:q8_0",
-            format="json",
-            options={"num_ctx": 8192, "temperature": 0.0},
-            messages=[{
-                "role": "user",
-                "content": INVOICE_EXTRACTION_PROMPT,
-                "images": [img]
-            }],
+        base64_image = base64.b64encode(img).decode('utf-8')
+        image_url = f"data:image/jpeg;base64,{base64_image}"
+        
+        response = llm_client.chat.completions.create(
+            model="glm-ocr",
+            response_format={"type": "json_object"},
+            temperature=0.0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": INVOICE_EXTRACTION_PROMPT},
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    ]
+                }
+            ]
         )
-        extracted_data_str = response["message"]["content"]
-        logger.info(
-            f"[{task_id}] Ollama response: prompt_eval_count={response.get('prompt_eval_count')}, "
-            f"eval_count={response.get('eval_count')}, "
-            f"total_duration={response.get('total_duration')}"
-        )
+        extracted_data_str = response.choices[0].message.content
+        logger.info(f"[{task_id}] Model processing completed.")
         logger.info(f"[{task_id}] Raw model output: {extracted_data_str!r}")
     except Exception as exc:
-        logger.error(f"[{task_id}] Ollama model error: {exc}")
+        logger.error(f"[{task_id}] LLM model error: {exc}")
         raise self.retry(exc=exc, countdown=60)
     
     cleaned_str = _clean_extracted_data(extracted_data_str)
