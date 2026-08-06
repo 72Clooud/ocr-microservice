@@ -3,6 +3,7 @@ import requests
 import io
 import base64
 import boto3
+from azure.storage.blob import BlobServiceClient
 import re
 import pypdfium2 as pdfium 
 
@@ -19,12 +20,20 @@ from schemas import (
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-s3_client = boto3.client(
-    "s3",
-    endpoint_url=settings.MINIO_INTERNAL_ENDPOINT,
-    aws_access_key_id=settings.MINIO_ROOT_USER,
-    aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
-)
+if settings.MINIO_INTERNAL_ENDPOINT and settings.MINIO_ROOT_USER:
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=settings.MINIO_INTERNAL_ENDPOINT,
+        aws_access_key_id=settings.MINIO_ROOT_USER,
+        aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
+    )
+else:
+    s3_client = None
+
+if settings.AZURE_STORAGE_CONNECTION_STRING:
+    blob_service_client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+else:
+    blob_service_client = None
 llm_client = OpenAI(base_url=settings.LLM_API_BASE_URL, api_key="sk-no-key-required")
 
 celery_app = Celery('ocr_worker', broker=settings.CELERY_BROKER_URL)
@@ -86,10 +95,16 @@ def _pdf_to_image(pdf_bytes: bytes, dpi: int = 300) -> bytes:
 @celery_app.task(name="process_invoice", bind=True, max_retries=3)
 def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -> bool:
     try:
-        file_obj = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=file_path)
-        file_bytes = file_obj['Body'].read()
+        if blob_service_client and settings.AZURE_CONTAINER_NAME:
+            blob_client = blob_service_client.get_blob_client(container=settings.AZURE_CONTAINER_NAME, blob=file_path)
+            file_bytes = blob_client.download_blob().readall()
+        elif s3_client and settings.BUCKET_NAME:
+            file_obj = s3_client.get_object(Bucket=settings.BUCKET_NAME, Key=file_path)
+            file_bytes = file_obj['Body'].read()
+        else:
+            raise ValueError("There is no configuration for Blob Storage and Minio")
     except Exception as exc:
-        logger.error(f"[{task_id}] MinIO download error: {exc}")
+        logger.error(f"[{task_id}] Storage download error: {exc}")
         raise self.retry(exc=exc, countdown=60)
 
     if file_bytes.startswith(FileTypePrefixes.PDF_PREFIX.value):
