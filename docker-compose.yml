@@ -17,27 +17,46 @@ services:
     depends_on:
       redis:
         condition: service_started
-      azurite:
+      minio:
         condition: service_started
-      ollama-init:
+      model-init:
         condition: service_completed_successfully
 
-  azurite:
-    image: mcr.microsoft.com/azure-storage/azurite:latest
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     ports:
-      - "10000:10000"  # Blob service
-      - "10001:10001"  # Queue service
-      - "10002:10002"  # Table service
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
     volumes:
-      - azurite_data:/data
-    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 -l /data"
+      - minio_data:/data
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
+  model-init:
+    image: alpine:latest
+    command: >
+      sh -c "
+      apk add --no-cache curl &&
+      mkdir -p /models &&
+      echo 'Pobieranie modelu GGUF...' &&
+      curl -L -o /models/glm-ocr-q8_0.gguf https://huggingface.co/mradermacher/GLM-OCR-GGUF/resolve/main/GLM-OCR.Q8_0.gguf &&
+      echo 'Pobieranie adaptera Vision (mmproj)...' &&
+      curl -L -o /models/mmproj-glm-ocr.gguf https://huggingface.co/mradermacher/GLM-OCR-GGUF/resolve/main/GLM-OCR.mmproj-Q8_0.gguf
+      "
     volumes:
-      - ollama_models:/root/.ollama
+      - llama_models:/models
+
+  llama-server:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    ports:
+      - "8080:8080"
+    volumes:
+      - llama_models:/models
+    depends_on:
+      model-init:
+        condition: service_completed_successfully
     deploy:
       resources:
         reservations:
@@ -45,20 +64,14 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  ollama-init:
-    image: ollama/ollama:latest
-    depends_on:
-      ollama:
-        condition: service_healthy
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-    command: pull glm-ocr:q8_0
+    command: >
+      -m /models/glm-ocr-q8_0.gguf
+      --mmproj /models/mmproj-glm-ocr.gguf
+      --host 0.0.0.0
+      --port 8080
+      -c 8192
+      -cb
+      -ngl 999
 
   redis:
     image: redis:7-alpine
@@ -69,6 +82,6 @@ services:
       - redis_data:/data
 
 volumes:
-  azurite_data:
-  ollama_models:
+  minio_data:
+  llama_models:
   redis_data:

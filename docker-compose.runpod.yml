@@ -1,0 +1,70 @@
+services:
+  api:
+    image: ghcr.io/${GITHUB_USERNAME:-your-github-username}/ocr-api:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.runpod
+    depends_on:
+      redis:
+        condition: service_started
+
+  worker:
+    image: ghcr.io/${GITHUB_USERNAME:-your-github-username}/ocr-api:latest
+    command: ["uv", "run", "celery", "-A", "tasks.celery_app", "worker", "--loglevel=info"]
+    env_file:
+      - .env.runpod
+    depends_on:
+      redis:
+        condition: service_started
+      model-init:
+        condition: service_completed_successfully
+      llama-server:
+        condition: service_started
+
+  model-init:
+    image: alpine:latest
+    command: >
+      sh -c "
+      apk add --no-cache curl &&
+      mkdir -p /models &&
+      echo 'Pobieranie modelu GGUF...' &&
+      if [ ! -f /models/glm-ocr-q8_0.gguf ]; then curl -L -o /models/glm-ocr-q8_0.gguf https://huggingface.co/mradermacher/GLM-OCR-GGUF/resolve/main/GLM-OCR.Q8_0.gguf; fi &&
+      echo 'Pobieranie adaptera Vision (mmproj)...' &&
+      if [ ! -f /models/mmproj-glm-ocr.gguf ]; then curl -L -o /models/mmproj-glm-ocr.gguf https://huggingface.co/mradermacher/GLM-OCR-GGUF/resolve/main/GLM-OCR.mmproj-Q8_0.gguf; fi
+      "
+    volumes:
+      - /workspace/models:/models
+
+  llama-server:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    ports:
+      - "8080:8080"
+    volumes:
+      - /workspace/models:/models
+    depends_on:
+      model-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      -m /models/glm-ocr-q8_0.gguf
+      --mmproj /models/mmproj-glm-ocr.gguf
+      --host 0.0.0.0
+      --port 8080
+      -c 8192
+      -cb
+      -ngl 999
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-your-redis-password}
+    volumes:
+      - /workspace/redis_data:/data

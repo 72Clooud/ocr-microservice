@@ -5,11 +5,18 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "OCR Worker"
 
-    # Azure Blob Storage
-    AZURE_STORAGE_CONNECTION_STRING: str
-    AZURE_STORAGE_CONTAINER_NAME: str = "invoices"
+    # MinIO (Opcjonalne, jeśli używamy Azure Blob Storage)
+    MINIO_ROOT_USER: str | None = None
+    MINIO_ROOT_PASSWORD: str | None = None
+    MINIO_INTERNAL_ENDPOINT: str | None = None
+    MINIO_EXTERNAL_URL: str | None = None
+    BUCKET_NAME: str | None = None
 
-    OLLAMA_HOST: str
+    # Azure Blob Storage (Główne rozwiązanie dla Azure)
+    AZURE_STORAGE_CONNECTION_STRING: str | None = None
+    AZURE_CONTAINER_NAME: str | None = None
+
+    LLM_API_BASE_URL: str
     
     REDIS_PASSWORD: str
     REDIS_HOST: str = "redis"

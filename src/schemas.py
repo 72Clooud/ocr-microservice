@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Union, List
+from enum import Enum
 
 class InvoiceTaskRequest(BaseModel):
     task_id: str
@@ -43,4 +44,8 @@ class WebhookSuccessPayload(BaseModel):
     task_id: str
     status: str = "SUCCESS"
     data: InvoiceData
-
+
+class FileTypePrefixes(Enum):
+    PDF_PREFIX = b"%PDF-"
+    JPG_PREFIX = b"\xff\xd8\xff"
+    PNG_PREFIX = b"\x89PNG\r\n\x1a\n"
