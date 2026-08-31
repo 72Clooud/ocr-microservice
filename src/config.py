@@ -22,8 +22,6 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "redis"
     REDIS_PORT: str = "6379"
     REDIS_SSL: bool = False
-    
-    WEBHOOK_SECRET_TOKEN: str
 
     @property
     def CELERY_BROKER_URL(self) -> str:

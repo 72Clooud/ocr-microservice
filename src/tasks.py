@@ -64,7 +64,6 @@ def _send_webhook(url: str, payload_dict: dict, task_id: str) -> None:
         logger.info(f"[{task_id}] Successfully completed. Webhook sent")
     except Exception as exc:
         logger.error(f"[{task_id}] Error sending webhook: {exc}")
-        raise
 
 def _preprocess_image(image_bytes: bytes, max_size: int = 1344) -> bytes:
     img = Image.open(io.BytesIO(image_bytes))
