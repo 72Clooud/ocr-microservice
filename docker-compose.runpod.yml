@@ -1,22 +1,10 @@
 services:
-  api:
-    image: ghcr.io/${GITHUB_USERNAME:-your-github-username}/ocr-api:latest
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env.runpod
-    depends_on:
-      redis:
-        condition: service_started
-
   worker:
     image: ghcr.io/${GITHUB_USERNAME:-your-github-username}/ocr-api:latest
     command: ["uv", "run", "celery", "-A", "tasks.celery_app", "worker", "--loglevel=info"]
     env_file:
       - .env.runpod
     depends_on:
-      redis:
-        condition: service_started
       model-init:
         condition: service_completed_successfully
       llama-server:
@@ -60,11 +48,3 @@ services:
       -c 8192
       -cb
       -ngl 999
-
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD:-your-redis-password}
-    volumes:
-      - /workspace/redis_data:/data
