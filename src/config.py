@@ -5,14 +5,12 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "OCR Worker"
 
-    # MinIO (Opcjonalne, jeśli używamy Azure Blob Storage)
     MINIO_ROOT_USER: str | None = None
     MINIO_ROOT_PASSWORD: str | None = None
     MINIO_INTERNAL_ENDPOINT: str | None = None
     MINIO_EXTERNAL_URL: str | None = None
     BUCKET_NAME: str | None = None
 
-    # Azure Blob Storage (Główne rozwiązanie dla Azure)
     AZURE_STORAGE_CONNECTION_STRING: str | None = None
     AZURE_CONTAINER_NAME: str | None = None
 
@@ -29,4 +27,4 @@ class Settings(BaseSettings):
         ssl_params = "?ssl_cert_reqs=none" if self.REDIS_SSL else ""
         return f"{scheme}://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/0{ssl_params}"
 
-settings = Settings()
+settings = Settings()
