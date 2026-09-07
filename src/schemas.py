@@ -32,9 +32,16 @@ class Summary(BaseModel):
     total_due: Optional[Union[float, str]] = None
     currency: Optional[str] = None
 
+class Dates(BaseModel):
+    model_config = {"extra": "ignore"}
+    issue_date: Optional[str] = None
+    sale_date: Optional[str] = None
+    due_date: Optional[str] = None
+
 class InvoiceData(BaseModel):
     model_config = {"extra": "ignore"}
     invoice_number: Optional[str] = None
+    dates: Optional[Dates] = None
     seller: Optional[Company] = None
     buyer: Optional[Company] = None
     line_items: Optional[List[LineItem]] = None
