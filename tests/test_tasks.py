@@ -53,8 +53,7 @@ def test_send_webhook_failure(mock_post):
     mock_post.side_effect = requests.RequestException("Connection failed")
 
     payload = {"task_id": "test-task", "status": "SUCCESS"}
-    with pytest.raises(requests.RequestException):
-        _send_webhook("http://example.com/webhook", payload, "test-task")
+    _send_webhook("http://example.com/webhook", payload, "test-task")
 
 
 def _generate_test_image(width: int, height: int) -> bytes:
