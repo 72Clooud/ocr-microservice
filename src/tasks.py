@@ -152,6 +152,6 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
         webhook_url,
         payload_model.model_dump(),
         task_id
-        )    
+    )    
 
     return True

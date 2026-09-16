@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
 
     PROJECT_NAME: str = "OCR Worker"
 
@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "redis"
     REDIS_PORT: str = "6379"
     REDIS_SSL: bool = False
+
+    RUNPOD_API_KEY: str | None = None
+    RUNPOD_POD_ID: str | None = None
+    RUNPOD_NETWORK_VOLUME_ID: str | None = None
+    RUNPOD_TEMPLATE_ID: str | None = None
+    RUNPOD_AUTO_LIFECYCLE: bool = False
+    RUNPOD_IDLE_TIMEOUT_SECONDS: int = 300
 
     @property
     def CELERY_BROKER_URL(self) -> str:
