@@ -8,6 +8,7 @@ Do not add any explanations or markdown formatting outside the JSON object.
 Expected JSON Template to fill:
 {
     "invoice_number": null,
+    "iban": null,
     "dates": {
         "issue_date": null,
         "sale_date": null,

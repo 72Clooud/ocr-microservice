@@ -41,6 +41,7 @@ class Dates(BaseModel):
 class InvoiceData(BaseModel):
     model_config = {"extra": "ignore"}
     invoice_number: Optional[str] = None
+    iban: Optional[str] = None
     dates: Optional[Dates] = None
     seller: Optional[Company] = None
     buyer: Optional[Company] = None
