@@ -22,11 +22,7 @@ class Settings(BaseSettings):
     REDIS_SSL: bool = False
 
     RUNPOD_API_KEY: str | None = None
-    RUNPOD_POD_ID: str | None = None
-    RUNPOD_NETWORK_VOLUME_ID: str | None = None
     RUNPOD_TEMPLATE_ID: str | None = None
-    RUNPOD_AUTO_LIFECYCLE: bool = False
-    RUNPOD_IDLE_TIMEOUT_SECONDS: int = 300
 
     @property
     def CELERY_BROKER_URL(self) -> str:

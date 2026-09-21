@@ -8,19 +8,20 @@ from .exceptions import (
     RunPodAPIError,
     InsufficientGPUCapacityError,
 )
+from .constants import (
+    RUNPOD_API_BASE_URL,
+    DEFAULT_TIMEOUT,
+    HEALTH_URL_TEMPLATE,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class RunPodClient:
-    DEFAULT_BASE_URL = "https://rest.runpod.io/v1"
-    DEFAULT_TIMEOUT = (5.0, 30.0)
-    HEALTH_URL_TEMPLATE = "https://{pod_id}-8080.proxy.runpod.net/health"
-
     def __init__(
         self,
         api_key: str,
-        base_url: str = DEFAULT_BASE_URL,
+        base_url: str = RUNPOD_API_BASE_URL,
         max_retries: int = 3,
         backoff_factor: float = 0.5,
     ):
@@ -39,7 +40,7 @@ class RunPodClient:
             total=max_retries,
             backoff_factor=backoff_factor,
             status_forcelist=[429, 502, 503, 504],
-            allowed_methods=["GET", "POST", "DELETE"],
+            allowed_methods=["GET", "POST", "DELETE", "PATCH"],
             raise_on_status=False,
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -56,7 +57,7 @@ class RunPodClient:
         self.close()
 
     def _request(self, method: str, endpoint: str, **kwargs) -> Any:
-        kwargs.setdefault("timeout", self.DEFAULT_TIMEOUT)
+        kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
         try:
@@ -67,19 +68,27 @@ class RunPodClient:
         if response.status_code == 404:
             return None
 
-        # Detect specific capacity errors
-        if response.status_code in (400, 500):
-            text = response.text.lower()
-            if "not enough free gpus" in text or "no instances currently available" in text:
-                raise InsufficientGPUCapacityError(
-                    f"GPU capacity unavailable: {response.text}"
-                )
-
         if not response.ok:
+            detail = ""
+            try:
+                error_body = response.json()
+                detail = error_body.get("detail", "")
+            except (ValueError, AttributeError):
+                detail = response.text
+
+            if response.status_code == 400:
+                detail_lower = detail.lower()
+                if any(phrase in detail_lower for phrase in [
+                    "capacity", "not enough", "no instances", "could not be placed",
+                ]):
+                    raise InsufficientGPUCapacityError(
+                        f"GPU capacity unavailable: {detail}"
+                    )
+
             raise RunPodAPIError(
-                message=f"RunPod API error ({response.status_code}): {response.text}",
+                message=f"RunPod API error ({response.status_code}): {detail}",
                 status_code=response.status_code,
-                response_text=response.text,
+                response_text=detail,
             )
 
         if response.status_code == 204 or not response.content:
@@ -90,14 +99,28 @@ class RunPodClient:
         except ValueError as exc:
             raise RunPodAPIError(f"Invalid JSON response: {exc}") from exc
 
+    def get_available_gpus(self) -> list[dict]:
+        result = self._request("GET", "/catalog/gpus?include=AVAILABILITY&product=POD")
+        if not result or "gpus" not in result:
+            return []
+        
+        available = []
+        for gpu in result["gpus"]:
+            if gpu.get("availability") in ("LOW", "MEDIUM", "HIGH"):
+                available.append(gpu)
+        return available
+
     def get_pod(self, pod_id: str) -> dict | None:
         return self._request("GET", f"/pods/{pod_id}")
 
-    def start_pod(self, pod_id: str) -> None:
-        self._request("POST", f"/pods/{pod_id}/start")
+    def pod_action(self, pod_id: str, action: str) -> dict | None:
+        return self._request("POST", f"/pods/{pod_id}/action", json={"action": action})
 
-    def stop_pod(self, pod_id: str) -> None:
-        self._request("POST", f"/pods/{pod_id}/stop")
+    def start_pod(self, pod_id: str) -> dict | None:
+        return self.pod_action(pod_id, "start")
+
+    def stop_pod(self, pod_id: str) -> dict | None:
+        return self.pod_action(pod_id, "stop")
 
     def terminate_pod(self, pod_id: str) -> None:
         self._request("DELETE", f"/pods/{pod_id}")
@@ -109,7 +132,7 @@ class RunPodClient:
         return result
 
     def is_health_ready(self, pod_id: str, timeout: float = 3.0) -> bool:
-        url = self.HEALTH_URL_TEMPLATE.format(pod_id=pod_id)
+        url = HEALTH_URL_TEMPLATE.format(pod_id=pod_id)
         try:
             resp = self.session.get(url, timeout=timeout)
             return resp.status_code == 200

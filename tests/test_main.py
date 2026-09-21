@@ -13,7 +13,7 @@ def test_process_invoice_success():
         "webhook_url": "https://example.com/webhooks/ocr"
     }
     
-    with patch("main.process_invoice_task.delay") as mock_delay:
+    with patch("routers.invoices.process_invoice_task.delay") as mock_delay:
         response = client.post("/api/v1/process_invoice", json=payload)
         
         # Verify Celery delay was called with the correct parameters
@@ -39,7 +39,7 @@ def test_process_invoice_missing_fields():
         "file_path": "invoices/2026/06/invoice_abc.pdf"
     }
     
-    with patch("main.process_invoice_task.delay") as mock_delay:
+    with patch("routers.invoices.process_invoice_task.delay") as mock_delay:
         response = client.post("/api/v1/process_invoice", json=payload)
         mock_delay.assert_not_called()
         
