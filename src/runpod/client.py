@@ -110,6 +110,14 @@ class RunPodClient:
                 available.append(gpu)
         return available
 
+    def list_pods(self) -> list[dict]:
+        result = self._request("GET", "/pods")
+        if not result:
+            return []
+        if isinstance(result, list):
+            return result
+        return result.get("pods", [])
+
     def get_pod(self, pod_id: str) -> dict | None:
         return self._request("GET", f"/pods/{pod_id}")
 

@@ -56,3 +56,24 @@ class FileTypePrefixes(Enum):
     PDF_PREFIX = b"%PDF-"
     JPG_PREFIX = b"\xff\xd8\xff"
     PNG_PREFIX = b"\x89PNG\r\n\x1a\n"
+
+
+class PodStatusResponse(BaseModel):
+    configured: bool
+    pod_id: Optional[str] = None
+    status: Optional[str] = None
+    health_ready: bool = False
+    llm_url: Optional[str] = None
+    gpu: Optional[str] = None
+    cost_per_hr: Optional[float] = None
+    started_at: Optional[str] = None
+    uptime_seconds: Optional[int] = None
+
+
+class PodActionResponse(BaseModel):
+    message: str
+    pod_id: Optional[str] = None
+    llm_url: Optional[str] = None
+    status: Optional[str] = None
+
+

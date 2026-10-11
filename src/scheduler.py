@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 def scheduled_pod_start():
     try:
         service = get_runpod_service()
-        llm_url = service.start_pod()
-        logger.info(f"[Scheduler] Pod started, LLM URL: {llm_url}")
+        result = service.start_pod()
+        llm_url = result.get("llm_url") if isinstance(result, dict) else result
+        logger.info(f"[Scheduler] Pod start result: {result.get('message') if isinstance(result, dict) else result}, LLM URL: {llm_url}")
     except RunPodError as exc:
         logger.error(f"[Scheduler] Failed to start pod: {exc}")
 
@@ -21,7 +22,9 @@ def scheduled_pod_start():
 def scheduled_pod_stop():
     try:
         service = get_runpod_service()
-        service.stop_pod()
-        logger.info("[Scheduler] Pod stopped")
+        result = service.stop_pod()
+        message = result.get("message") if isinstance(result, dict) else "Pod stopped"
+        logger.info(f"[Scheduler] {message}")
     except RunPodError as exc:
         logger.error(f"[Scheduler] Failed to stop pod: {exc}")
+

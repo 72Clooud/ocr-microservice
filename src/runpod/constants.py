@@ -7,3 +7,6 @@ DEFAULT_TIMEOUT = (5.0, 30.0)
 
 HEALTH_URL_TEMPLATE = "https://{pod_id}-8080.proxy.runpod.net/health"
 LLM_URL_TEMPLATE = "https://{pod_id}-8080.proxy.runpod.net/v1"
+
+DEFAULT_POD_NAME = "ocr-llama-server"
+
