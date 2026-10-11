@@ -9,6 +9,7 @@ import pypdfium2 as pdfium
 
 from PIL import Image
 from celery import Celery
+from celery.schedules import crontab
 from openai import OpenAI
 
 from config import settings
@@ -41,7 +42,18 @@ celery_app.conf.update(
     worker_concurrency=1,
     worker_prefetch_multiplier=1,
     task_acks_late=True,
-    task_time_limit=300
+    task_time_limit=300,
+    timezone="Europe/Warsaw",
+    beat_schedule={
+        "morning-pod-start": {
+            "task": "scheduled_pod_start",
+            "schedule": crontab(minute=0, hour=7, day_of_week="1-5"),
+        },
+        "evening-pod-stop": {
+            "task": "scheduled_pod_stop",
+            "schedule": crontab(minute=0, hour=20, day_of_week="1-5"),
+        },
+    },
 )
 
 def _clean_extracted_data(extracted_data_str: str) -> str:
@@ -152,6 +164,6 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
         webhook_url,
         payload_model.model_dump(),
         task_id
-        )    
+    )    
 
     return True
