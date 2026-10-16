@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 
 from config import settings
-from routers import invoices, pod
+from routers import invoices, pod, reports
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,3 +16,4 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title=settings.PROJECT_NAME)
 app.include_router(invoices.router)
 app.include_router(pod.router)
+app.include_router(reports.router)

@@ -1,3 +1,4 @@
+from datetime import date
 from pydantic import BaseModel, Field
 from typing import Optional, Union, List
 from enum import Enum
@@ -76,5 +77,26 @@ class PodActionResponse(BaseModel):
     pod_id: Optional[str] = None
     llm_url: Optional[str] = None
     status: Optional[str] = None
+
+
+class InvoiceReportRequest(BaseModel):
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    date_field: Optional[str] = Field("issue_date", pattern=r"^(issue_date|created_at)$")
+    status_id: Optional[int] = None
+    uploaded_by: Optional[int] = None
+    supplier_id: Optional[int] = None
+    currency: Optional[str] = Field(None, max_length=3)
+    limit: Optional[int] = Field(50000, ge=1, le=100000)
+
+
+class InvoiceReportResponse(BaseModel):
+    file_path: str
+    bucket: str
+    filename: str
+    download_url: Optional[str] = None
+    rows_count: int
+    generated_at: str
+
 
 

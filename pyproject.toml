@@ -17,6 +17,11 @@ dependencies = [
     "redis>=8.0.0",
     "requests>=2.34.0",
     "uvicorn>=0.46.0",
+    "psycopg2-binary>=2.9.13",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.6",
+    "sqlalchemy>=2.1.4",
+    "psycopg[binary]>=3.3.6",
 ]
 
 [dependency-groups]
