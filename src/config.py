@@ -13,8 +13,6 @@ class Settings(BaseSettings):
 
     AZURE_STORAGE_CONNECTION_STRING: str | None = None
     AZURE_CONTAINER_NAME: str | None = None
-
-    LLM_API_BASE_URL: str
     
     REDIS_PASSWORD: str
     REDIS_HOST: str = "redis"
@@ -23,6 +21,12 @@ class Settings(BaseSettings):
 
     RUNPOD_API_KEY: str | None = None
     RUNPOD_TEMPLATE_ID: str | None = None
+
+    @property
+    def APP_REDISS_URL(self) -> str:
+        scheme = "rediss" if self.REDIS_SSL else "redis"
+        ssl_params = "?ssl_cert_reqs=none" if self.REDIS_SSL else ""
+        return f"{scheme}://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/1{ssl_params}"
 
     @property
     def CELERY_BROKER_URL(self) -> str:
