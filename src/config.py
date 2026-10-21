@@ -21,6 +21,8 @@ class Settings(BaseSettings):
 
     RUNPOD_API_KEY: str | None = None
     RUNPOD_TEMPLATE_ID: str | None = None
+    RUNPOD_NETWORK_VOLUME_ID: str | None = None
+    RUNPOD_NETWORK_VOLUME_PATH: str = "/workspace"
 
     @property
     def APP_REDISS_URL(self) -> str:

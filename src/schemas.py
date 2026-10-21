@@ -22,8 +22,9 @@ class LineItem(BaseModel):
     model_config = {"extra": "ignore"}
     description: Optional[str] = None
     quantity: Optional[Union[float, str]] = None
+    net_price: Optional[Union[float, str]] = None
     net_value: Optional[Union[float, str]] = None
-    var_rate: Optional[Union[float, str]] = None
+    vat_rate: Optional[Union[float, str]] = None
 
 class Summary(BaseModel):
     model_config = {"extra": "ignore"}

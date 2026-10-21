@@ -151,8 +151,8 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": INVOICE_EXTRACTION_PROMPT},
-                        {"type": "image_url", "image_url": {"url": image_url}}
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                        {"type": "text", "text": INVOICE_EXTRACTION_PROMPT}
                     ]
                 }
             ]
