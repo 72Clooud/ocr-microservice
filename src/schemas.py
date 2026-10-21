@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Union, List
+from datetime import date
 from enum import Enum
+from typing import List, Optional, Union
+
+from pydantic import BaseModel, Field
 
 class InvoiceTaskRequest(BaseModel):
     task_id: str
@@ -79,3 +81,22 @@ class PodActionResponse(BaseModel):
     status: Optional[str] = None
 
 
+class InvoiceReportRequest(BaseModel):
+    issue_date_from: Optional[date] = Field(default=None, examples=[None])
+    issue_date_to: Optional[date] = Field(default=None, examples=[None])
+    created_at_from: Optional[date] = Field(default=None, examples=[None])
+    created_at_to: Optional[date] = Field(default=None, examples=[None])
+    status_id: Optional[int] = Field(default=None, examples=[None])
+    uploaded_by: Optional[int] = Field(default=None, examples=[None])
+    supplier_id: Optional[int] = Field(default=None, examples=[None])
+    currency: Optional[str] = Field(default=None, max_length=3, examples=[None])
+    limit: Optional[int] = Field(default=50000, ge=1, le=100000)
+
+
+class InvoiceReportResponse(BaseModel):
+    file_path: str
+    bucket: str
+    filename: str
+    download_url: Optional[str] = None
+    rows_count: int
+    generated_at: str
