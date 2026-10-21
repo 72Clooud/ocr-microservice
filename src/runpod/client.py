@@ -110,6 +110,9 @@ class RunPodClient:
                 available.append(gpu)
         return available
 
+    def get_network_volume(self, volume_id: str) -> dict | None:
+        return self._request("GET", f"/network-volumes/{volume_id}")
+
     def list_pods(self) -> list[dict]:
         result = self._request("GET", "/pods")
         if not result:

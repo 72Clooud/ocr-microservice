@@ -25,10 +25,14 @@ class RunPodService:
         redis_client: redis.Redis,
         api_key: Optional[str] = None,
         template_id: Optional[str] = None,
+        network_volume_id: Optional[str] = None,
+        network_volume_path: Optional[str] = None,
         client: Optional[RunPodClient] = None,
     ):
         self.api_key = api_key or settings.RUNPOD_API_KEY
         self.template_id = template_id or settings.RUNPOD_TEMPLATE_ID
+        self.network_volume_id = network_volume_id or settings.RUNPOD_NETWORK_VOLUME_ID
+        self.network_volume_path = network_volume_path or settings.RUNPOD_NETWORK_VOLUME_PATH
 
         if not self.api_key:
             raise ValueError("RUNPOD_API_KEY is not configured in environment or settings.")
@@ -134,36 +138,79 @@ class RunPodService:
             "uptime_seconds": runtime.get("uptime"),
         }
 
+    def _resolve_volume_data_center(self) -> Optional[str]:
+        if not self.network_volume_id:
+            return None
+        volume = self.client.get_network_volume(self.network_volume_id)
+        if not volume:
+            raise RunPodError(
+                f"Network volume '{self.network_volume_id}' not found or not accessible with this API key."
+            )
+        data_center = volume.get("dataCenter")
+        if not data_center:
+            raise RunPodError(f"Network volume '{self.network_volume_id}' has no data center assigned.")
+        return data_center
+
+    @staticmethod
+    def _gpu_available_in(gpu: dict, data_center: Optional[str]) -> bool:
+        if data_center is None:
+            return True
+        for dc in gpu.get("dataCenters") or []:
+            if dc.get("id") == data_center and dc.get("availability") in ("LOW", "MEDIUM", "HIGH"):
+                return True
+        return False
+
     def create_budget_pod(self) -> dict:
-        logger.info("[RunPod] Fetching available GPUs from catalog...")
-        available_gpus = self.client.get_available_gpus()
-        if not available_gpus:
-            raise RunPodError("No GPUs currently available in the RunPod catalog.")
-        
-        available_gpus.sort(key=lambda g: g.get("price", {}).get("secure", float('inf')))
-        target_gpus = [g["id"] for g in available_gpus]
-        
-        logger.info(f"[RunPod] Found {len(target_gpus)} available GPU types. Cheapest is {target_gpus[0]}.")
-        
         if not self.template_id:
             raise RunPodError("RUNPOD_TEMPLATE_ID must be configured to create a pod.")
 
-        base_payload = {
+        data_center = self._resolve_volume_data_center()
+
+        logger.info("[RunPod] Fetching available GPUs from catalog...")
+        available_gpus = self.client.get_available_gpus()
+
+        # Template image is CUDA-based (llama.cpp:server-cuda) and pods use SECURE cloud,
+        # so only NVIDIA GPUs offered on secure cloud in the volume's data center are usable.
+        candidates = [
+            g for g in available_gpus
+            if g.get("manufacturer", "NVIDIA") == "NVIDIA"
+            and g.get("secure", True)
+            and self._gpu_available_in(g, data_center)
+        ]
+        if not candidates:
+            raise RunPodError(f"No suitable NVIDIA GPUs currently available in data center {data_center}.")
+
+        candidates.sort(key=lambda g: (g.get("price") or {}).get("secure") or float("inf"))
+        target_gpus = [g["id"] for g in candidates]
+
+        logger.info(
+            f"[RunPod] Found {len(target_gpus)} candidate GPU types"
+            f"{f' in {data_center}' if data_center else ''}. Cheapest is {target_gpus[0]}."
+        )
+
+        base_payload: dict = {
             "name": DEFAULT_POD_NAME,
             "templateId": self.template_id,
-            "ports": ["8080/http", "22/tcp"],
+            "cloud": "SECURE",
         }
+        if self.network_volume_id:
+            base_payload["mounts"] = {
+                "network": [
+                    {"volumeId": self.network_volume_id, "path": self.network_volume_path}
+                ]
+            }
+            base_payload["dataCenterIds"] = [data_center]
 
         logger.info("[RunPod] Provisioning budget pod (v2 API)...")
-        
+
         for gpu_id in target_gpus:
             payload = dict(base_payload)
             payload["gpu"] = {"id": gpu_id, "count": 1}
-            
+
             try:
                 pod_data = self.client.create_pod(payload)
                 new_id = pod_data["id"]
-                self.pod_id = new_id 
+                self.pod_id = new_id
                 logger.info(f"[RunPod] Created pod {new_id} with GPU {gpu_id}")
                 return pod_data
             except InsufficientGPUCapacityError:
@@ -171,7 +218,9 @@ class RunPodService:
                 continue
             except RunPodAPIError as exc:
                 if exc.status_code in (400, 403):
-                    logger.info(f"[RunPod] GPU {gpu_id} unavailable (HTTP {exc.status_code}), trying next...")
+                    logger.info(
+                        f"[RunPod] GPU {gpu_id} unavailable (HTTP {exc.status_code}: {exc.response_text}), trying next..."
+                    )
                     continue
                 raise
 
