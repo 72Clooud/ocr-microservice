@@ -9,9 +9,11 @@ import pypdfium2 as pdfium
 
 from PIL import Image
 from celery import Celery
+from celery.schedules import crontab
 from openai import OpenAI
 
 from config import settings
+from dependencies import get_runpod_service
 from prompts import INVOICE_EXTRACTION_PROMPT
 from schemas import (
     InvoiceData, WebhookSuccessPayload, FileTypePrefixes
@@ -34,14 +36,37 @@ if settings.AZURE_STORAGE_CONNECTION_STRING:
     blob_service_client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
 else:
     blob_service_client = None
-llm_client = OpenAI(base_url=settings.LLM_API_BASE_URL, api_key="sk-no-key-required")
+
+def get_llm_client() -> OpenAI:
+    try:
+        run_pod_service = get_runpod_service()
+        llm_url = run_pod_service.model_base_url
+        if llm_url:
+            llm_client = OpenAI(base_url=llm_url, api_key=settings.RUNPOD_API_KEY)
+        else:
+            # local testing
+            llm_client = OpenAI(base_url="http://llama-server:8080/v1", api_key="sk-no-key-required")
+        return llm_client
+    except Exception as e:
+        raise ValueError(f'Erorr: {e}')
 
 celery_app = Celery('ocr_worker', broker=settings.CELERY_BROKER_URL)
 celery_app.conf.update(
     worker_concurrency=1,
     worker_prefetch_multiplier=1,
     task_acks_late=True,
-    task_time_limit=300
+    task_time_limit=300,
+    timezone="Europe/Warsaw",
+    beat_schedule={
+        "morning-pod-start": {
+            "task": "scheduled_pod_start",
+            "schedule": crontab(minute=0, hour=7, day_of_week="1-5"),
+        },
+        "evening-pod-stop": {
+            "task": "scheduled_pod_stop",
+            "schedule": crontab(minute=0, hour=20, day_of_week="1-5"),
+        },
+    },
 )
 
 def _clean_extracted_data(extracted_data_str: str) -> str:
@@ -93,6 +118,7 @@ def _pdf_to_image(pdf_bytes: bytes, dpi: int = 300) -> bytes:
 
 @celery_app.task(name="process_invoice", bind=True, max_retries=3)
 def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -> bool:
+    llm_client = get_llm_client()
     try:
         if blob_service_client and settings.AZURE_CONTAINER_NAME:
             blob_client = blob_service_client.get_blob_client(container=settings.AZURE_CONTAINER_NAME, blob=file_path)
@@ -125,8 +151,8 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": INVOICE_EXTRACTION_PROMPT},
-                        {"type": "image_url", "image_url": {"url": image_url}}
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                        {"type": "text", "text": INVOICE_EXTRACTION_PROMPT}
                     ]
                 }
             ]
@@ -152,6 +178,6 @@ def process_invoice_task(self, task_id: int, file_path: str, webhook_url: str) -
         webhook_url,
         payload_model.model_dump(),
         task_id
-        )    
+    )    
 
     return True
