@@ -64,10 +64,10 @@ def _generate_test_image(width: int, height: int) -> bytes:
 
 
 @patch("tasks.blob_service_client")
-@patch("tasks.llm_client.chat.completions.create")
+@patch("tasks.get_llm_client")
 @patch("tasks.requests.post")
 @patch("tasks.settings")
-def test_process_invoice_task_success(mock_settings, mock_post, mock_llm_chat, mock_blob_client):
+def test_process_invoice_task_success(mock_settings, mock_post, mock_get_llm_client, mock_blob_client):
     # Setup: Settings
     mock_settings.AZURE_CONTAINER_NAME = "test-container"
     mock_settings.AZURE_STORAGE_CONNECTION_STRING = "mock"
@@ -90,7 +90,9 @@ def test_process_invoice_task_success(mock_settings, mock_post, mock_llm_chat, m
                                    "```"
     mock_response = MagicMock()
     mock_response.choices = [mock_choice]
-    mock_llm_chat.return_value = mock_response
+    mock_llm_client = MagicMock()
+    mock_llm_client.chat.completions.create.return_value = mock_response
+    mock_get_llm_client.return_value = mock_llm_client
 
     # Setup: Webhook request returns success
     mock_webhook_response = MagicMock()
@@ -106,8 +108,8 @@ def test_process_invoice_task_success(mock_settings, mock_post, mock_llm_chat, m
     mock_blob_client.get_blob_client.assert_called_once_with(container="test-container", blob="path/to/invoice.jpg")
 
     # Verify LLM chat parameters
-    mock_llm_chat.assert_called_once()
-    called_kwargs = mock_llm_chat.call_args[1]
+    mock_llm_client.chat.completions.create.assert_called_once()
+    called_kwargs = mock_llm_client.chat.completions.create.call_args[1]
     assert called_kwargs["model"] == "glm-ocr"
     assert called_kwargs["response_format"] == {"type": "json_object"}
     assert called_kwargs["temperature"] == 0.0
@@ -124,12 +126,13 @@ def test_process_invoice_task_success(mock_settings, mock_post, mock_llm_chat, m
 
 
 @patch("tasks.blob_service_client")
+@patch("tasks.get_llm_client")
 @patch("tasks.process_invoice_task.retry")
 @patch("tasks.settings")
-def test_process_invoice_task_storage_failure(mock_settings, mock_retry, mock_blob_client):
+def test_process_invoice_task_storage_failure(mock_settings, mock_retry, mock_get_llm_client, mock_blob_client):
     mock_settings.AZURE_CONTAINER_NAME = "test-container"
     mock_settings.AZURE_STORAGE_CONNECTION_STRING = "mock"
-    
+
     # Setup: Azure throws an exception
     exc = Exception("Storage offline")
     mock_blob_client.get_blob_client.side_effect = exc
@@ -142,10 +145,10 @@ def test_process_invoice_task_storage_failure(mock_settings, mock_retry, mock_bl
 
 
 @patch("tasks.blob_service_client")
-@patch("tasks.llm_client.chat.completions.create")
+@patch("tasks.get_llm_client")
 @patch("tasks.process_invoice_task.retry")
 @patch("tasks.settings")
-def test_process_invoice_task_llm_failure(mock_settings, mock_retry, mock_llm_chat, mock_blob_client):
+def test_process_invoice_task_llm_failure(mock_settings, mock_retry, mock_get_llm_client, mock_blob_client):
     mock_settings.AZURE_CONTAINER_NAME = "test-container"
     mock_settings.AZURE_STORAGE_CONNECTION_STRING = "mock"
     
@@ -156,7 +159,9 @@ def test_process_invoice_task_llm_failure(mock_settings, mock_retry, mock_llm_ch
 
     # Setup: LLM client throws an exception
     exc = Exception("LLM client connection refused")
-    mock_llm_chat.side_effect = exc
+    mock_llm_client = MagicMock()
+    mock_llm_client.chat.completions.create.side_effect = exc
+    mock_get_llm_client.return_value = mock_llm_client
     mock_retry.side_effect = Retry()
 
     with pytest.raises(Retry):
