@@ -36,6 +36,19 @@ services:
     volumes:
       - minio_data:/data
 
+  minio-seed:
+    build: .
+    profiles:
+      - demo
+    env_file:
+      - .env
+    depends_on:
+      minio:
+        condition: service_started
+    volumes:
+      - ../invoice-system/demo-files:/demo-files:ro
+    entrypoint: ["uv", "run", "python", "scripts/seed_minio_demo.py"]
+
   model-init:
     image: alpine:latest
     command: >
